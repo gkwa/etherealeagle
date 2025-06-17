@@ -1,0 +1,27 @@
+{
+  "name": "etherealeagle",
+  "version": "1.0.0",
+  "description": "Link capture Chrome extension with hold-and-click interaction",
+  "type": "module",
+  "scripts": {
+    "setup": "pnpm install",
+    "build": "shx rm -rf dist && shx mkdir -p dist && pnpm run build:all && pnpm run copy:assets",
+    "build:all": "pnpm run build:background && pnpm run build:content && pnpm run build:popup",
+    "build:background": "vite build --config vite.background.config.ts",
+    "build:content": "vite build --config vite.content.config.ts",
+    "build:popup": "vite build --config vite.popup.config.ts",
+    "copy:assets": "shx cp src/manifest.json src/popup/popup.html src/popup/popup.css dist/",
+    "dev": "pnpm run build && pnpm run build --watch",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.326",
+    "@vitest/ui": "^3.2.4",
+    "jsdom": "^26.1.0",
+    "shx": "^0.4.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-checker": "^0.9.3",
+    "vitest": "^3.2.4"
+  }
+}
