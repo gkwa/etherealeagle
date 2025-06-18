@@ -1,5 +1,6 @@
 export class UrlOverlay {
   private isEnabled = false
+  private isVisible = true
   private overlay: HTMLElement | null = null
   private urls: string[] = []
   private database: any = null
@@ -26,8 +27,13 @@ export class UrlOverlay {
 
   private async loadSettings(): Promise<void> {
     try {
-      const result = await chrome.storage.local.get(["overlayEnabled", "overlayPosition"])
+      const result = await chrome.storage.local.get([
+        "overlayEnabled",
+        "overlayPosition",
+        "overlayVisible",
+      ])
       this.isEnabled = result.overlayEnabled ?? false
+      this.isVisible = result.overlayVisible ?? true
 
       if (this.isEnabled) {
         this.createOverlay(result.overlayPosition)
@@ -55,6 +61,14 @@ export class UrlOverlay {
       await chrome.storage.local.set({ overlayPosition: position })
     } catch (error) {
       console.error("Failed to save overlay position:", error)
+    }
+  }
+
+  private async saveVisibility(visible: boolean): Promise<void> {
+    try {
+      await chrome.storage.local.set({ overlayVisible: visible })
+    } catch (error) {
+      console.error("Failed to save overlay visibility:", error)
     }
   }
 
@@ -100,6 +114,14 @@ export class UrlOverlay {
           }
         } else {
           this.removeOverlay()
+        }
+      } else if (message.type === "OVERLAY_VISIBILITY_TOGGLE") {
+        this.isVisible = message.visible
+        console.log("Overlay visibility toggle:", this.isVisible)
+        await this.saveVisibility(this.isVisible)
+
+        if (this.overlay) {
+          this.updateOverlayVisibility()
         }
       } else if (message.type === "LINKS_CLEARED") {
         // Clear the overlay when all links are cleared
@@ -151,6 +173,35 @@ export class UrlOverlay {
     this.updateOverlay()
   }
 
+  private async toggleVisibility(): Promise<void> {
+    this.isVisible = !this.isVisible
+    await this.saveVisibility(this.isVisible)
+    this.updateOverlayVisibility()
+  }
+
+  private updateOverlayVisibility(): void {
+    if (!this.overlay) return
+
+    const content = document.getElementById("etherealeagle-overlay-content")
+    const resizeHandle = this.overlay.querySelector("[data-resize-handle]") as HTMLElement
+
+    if (this.isVisible) {
+      // Show content
+      if (content) content.style.display = "block"
+      if (resizeHandle) resizeHandle.style.display = "block"
+      this.overlay.style.height = "auto"
+      this.overlay.style.maxHeight = "400px"
+      this.overlay.style.minHeight = "120px"
+    } else {
+      // Hide content
+      if (content) content.style.display = "none"
+      if (resizeHandle) resizeHandle.style.display = "none"
+      this.overlay.style.height = "48px"
+      this.overlay.style.maxHeight = "48px"
+      this.overlay.style.minHeight = "48px"
+    }
+  }
+
   private createOverlay(savedPosition?: {
     left?: number
     top?: number
@@ -198,7 +249,7 @@ export class UrlOverlay {
      user-select: none;
    `
 
-    // Create header with drag handle
+    // Create header with drag handle and hide button
     const header = document.createElement("div")
     header.style.cssText = `
      padding: 12px 16px 8px 16px;
@@ -221,7 +272,48 @@ export class UrlOverlay {
      flex: 1;
    `
 
+    const controls = document.createElement("div")
+    controls.style.cssText = `
+     display: flex;
+     align-items: center;
+     gap: 8px;
+   `
+
+    // Hide/Show button
+    const hideButton = document.createElement("button")
+    hideButton.style.cssText = `
+     width: 20px;
+     height: 20px;
+     background: rgba(59, 130, 246, 0.2);
+     border: 1px solid rgba(59, 130, 246, 0.4);
+     border-radius: 4px;
+     color: #3b82f6;
+     cursor: pointer;
+     display: flex;
+     align-items: center;
+     justify-content: center;
+     font-size: 10px;
+     font-weight: bold;
+     transition: all 0.2s ease;
+   `
+
+    hideButton.addEventListener("mouseenter", () => {
+      hideButton.style.background = "rgba(59, 130, 246, 0.3)"
+      hideButton.style.transform = "scale(1.1)"
+    })
+
+    hideButton.addEventListener("mouseleave", () => {
+      hideButton.style.background = "rgba(59, 130, 246, 0.2)"
+      hideButton.style.transform = "scale(1)"
+    })
+
+    hideButton.addEventListener("click", (e) => {
+      e.stopPropagation()
+      this.toggleVisibility()
+    })
+
     const resizeHandle = document.createElement("div")
+    resizeHandle.setAttribute("data-resize-handle", "true")
     resizeHandle.style.cssText = `
      width: 20px;
      height: 12px;
@@ -243,7 +335,6 @@ export class UrlOverlay {
      cursor: ns-resize;
      opacity: 0.6;
      transition: opacity 0.2s ease;
-     margin-left: 8px;
    `
 
     resizeHandle.addEventListener("mouseenter", () => {
@@ -256,8 +347,11 @@ export class UrlOverlay {
       }
     })
 
+    controls.appendChild(hideButton)
+    controls.appendChild(resizeHandle)
+
     header.appendChild(title)
-    header.appendChild(resizeHandle)
+    header.appendChild(controls)
 
     // Create scrollable content area
     const content = document.createElement("div")
@@ -300,17 +394,24 @@ export class UrlOverlay {
     // Setup drag and resize functionality
     this.setupDragHandling(header, resizeHandle)
 
-    // Update overlay content
+    // Update overlay content and visibility
     this.updateOverlay()
+    this.updateOverlayVisibility()
+    this.updateHideButtonIcon(hideButton)
 
     console.log("Overlay created and appended to DOM")
+  }
+
+  private updateHideButtonIcon(button: HTMLElement): void {
+    button.textContent = this.isVisible ? "−" : "+"
+    button.title = this.isVisible ? "Hide capture list" : "Show capture list"
   }
 
   private setupDragHandling(dragHandle: HTMLElement, resizeHandle: HTMLElement): void {
     // Drag functionality for moving the overlay
     const startDrag = (e: MouseEvent) => {
-      // Don't start drag if clicking on resize handle
-      if (e.target === resizeHandle) return
+      // Don't start drag if clicking on resize handle or hide button
+      if (e.target === resizeHandle || (e.target as HTMLElement).tagName === "BUTTON") return
 
       e.preventDefault()
       this.isDragging = true
@@ -378,6 +479,8 @@ export class UrlOverlay {
 
     // Resize functionality
     const startResize = (e: MouseEvent) => {
+      if (!this.isVisible) return // Don't allow resize when collapsed
+
       e.preventDefault()
       e.stopPropagation()
       this.isResizing = true
@@ -417,11 +520,17 @@ export class UrlOverlay {
 
     const titleElement = document.getElementById("etherealeagle-overlay-title")
     const contentElement = document.getElementById("etherealeagle-overlay-content")
+    const hideButton = this.overlay.querySelector("button") as HTMLElement
 
     if (!titleElement || !contentElement) return
 
     // Update title with count
     titleElement.textContent = `Recent Captures (${this.urls.length})`
+
+    // Update hide button icon
+    if (hideButton) {
+      this.updateHideButtonIcon(hideButton)
+    }
 
     if (this.urls.length === 0) {
       contentElement.innerHTML =

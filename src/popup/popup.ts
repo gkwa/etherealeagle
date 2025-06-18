@@ -3,6 +3,7 @@ import { DatabaseClient } from "../content/DatabaseClient"
 class PopupManager {
   private database = new DatabaseClient()
   private overlayToggle: HTMLInputElement | null = null
+  private overlayVisibilityToggle: HTMLInputElement | null = null
   private linkCountElement: HTMLElement | null = null
   private clearButton: HTMLButtonElement | null = null
   private resetPositionButton: HTMLButtonElement | null = null
@@ -21,6 +22,9 @@ class PopupManager {
 
   private setupElements(): void {
     this.overlayToggle = document.getElementById("overlay-toggle") as HTMLInputElement
+    this.overlayVisibilityToggle = document.getElementById(
+      "overlay-visibility-toggle",
+    ) as HTMLInputElement
     this.linkCountElement = document.getElementById("link-count")
     this.clearButton = document.getElementById("clear-links-btn") as HTMLButtonElement
     this.resetPositionButton = document.getElementById("reset-position-btn") as HTMLButtonElement
@@ -28,11 +32,17 @@ class PopupManager {
 
   private async loadSettings(): Promise<void> {
     try {
-      const result = await chrome.storage.local.get(["overlayEnabled"])
+      const result = await chrome.storage.local.get(["overlayEnabled", "overlayVisible"])
       const overlayEnabled = result.overlayEnabled ?? false
+      const overlayVisible = result.overlayVisible ?? true
 
       if (this.overlayToggle) {
         this.overlayToggle.checked = overlayEnabled
+      }
+
+      if (this.overlayVisibilityToggle) {
+        this.overlayVisibilityToggle.checked = overlayVisible
+        this.overlayVisibilityToggle.disabled = !overlayEnabled
       }
     } catch (error) {
       console.error("Failed to load settings:", error)
@@ -66,6 +76,13 @@ class PopupManager {
       this.overlayToggle.addEventListener("change", this.handleOverlayToggle.bind(this))
     }
 
+    if (this.overlayVisibilityToggle) {
+      this.overlayVisibilityToggle.addEventListener(
+        "change",
+        this.handleOverlayVisibilityToggle.bind(this),
+      )
+    }
+
     if (this.clearButton) {
       this.clearButton.addEventListener("click", this.handleClearLinks.bind(this))
     }
@@ -89,11 +106,36 @@ class PopupManager {
     try {
       await chrome.storage.local.set({ overlayEnabled })
 
+      // Enable/disable visibility toggle based on overlay state
+      if (this.overlayVisibilityToggle) {
+        this.overlayVisibilityToggle.disabled = !overlayEnabled
+      }
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       if (tab.id) {
         await chrome.tabs.sendMessage(tab.id, {
           type: "OVERLAY_TOGGLE",
           enabled: overlayEnabled,
+        })
+      }
+    } catch (error) {
+      console.log("No content script to notify or storage error:", error)
+    }
+  }
+
+  private async handleOverlayVisibilityToggle(): Promise<void> {
+    if (!this.overlayVisibilityToggle) return
+
+    const overlayVisible = this.overlayVisibilityToggle.checked
+
+    try {
+      await chrome.storage.local.set({ overlayVisible })
+
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      if (tab.id) {
+        await chrome.tabs.sendMessage(tab.id, {
+          type: "OVERLAY_VISIBILITY_TOGGLE",
+          visible: overlayVisible,
         })
       }
     } catch (error) {
