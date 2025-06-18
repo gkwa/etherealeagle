@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { InputContext } from "../InputContext"
 
 describe("InputContext", () => {
@@ -23,10 +23,15 @@ describe("InputContext", () => {
 
   it("should detect contenteditable elements", () => {
     const div = document.createElement("div")
-    div.contentEditable = "true"
+    div.setAttribute("contenteditable", "true") // Use setAttribute instead of property
     document.body.appendChild(div)
-    div.focus()
+
+    // Mock document.activeElement to return our contenteditable div
+    vi.spyOn(document, "activeElement", "get").mockReturnValue(div)
 
     expect(inputContext.isUserTyping()).toBe(true)
+
+    // Restore original implementation
+    vi.restoreAllMocks()
   })
 })
