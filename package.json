@@ -12,7 +12,7 @@
     "build:popup": "vite build --config vite.popup.config.ts",
     "copy:assets": "shx cp src/manifest.json src/popup/popup.html src/popup/popup.css dist/",
     "dev": "pnpm run build && pnpm run build --watch",
-    "test": "vitest"
+    "test": "vitest --run"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.326",
